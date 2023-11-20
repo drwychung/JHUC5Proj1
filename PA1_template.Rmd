@@ -5,21 +5,149 @@ output:
     keep_md: true
 ---
 
+```{r setup, echo=TRUE}
+library(knitr)
+opts_chunk$set(echo=TRUE)
+```
 
 ## Loading and preprocessing the data
 
+```{r}
+library(readr)
+library(lubridate)
 
+df = read.csv(unzip('activity.zip','activity.csv'), 
+   na.string='NA')
+
+df$fint  = sprintf('%04i', df$interval)
+df$dmin  = floor(df$int / 100) * 60 + (df$int %% 100)
+df$rdate = ymd(df$date)
+
+```
 
 ## What is mean total number of steps taken per day?
 
+```{r}
+
+df.narm = df[!is.na(df$steps),]
+tstep = tapply(df.narm$steps, df.narm$date, sum)
+
+stmean = format(mean(tstep), nsmall=2, digits=7, big.mark=',')
+stmed  = format(median(tstep), big.mark=',')
+
+hist(tstep,
+   main='Histogram of Total Steps per Day', 
+   xlab='Total Steps per Day', 
+   ylab='Frequency') 
+
+```
+
+#### The mean of the total number of steps taken per day is `r stmean`.  
+#### The median of the total number of steps taken per day is `r stmed`.      
 
 
 ## What is the average daily activity pattern?
 
+```{r}
+library(dplyr)
 
+mstep = df.narm %>% group_by( dmin ) %>%
+   summarize(mstep = mean(steps)) %>%
+   arrange(dmin) %>% data.frame()
+
+maxstep = format(max(mstep$mstep), nsmall=3, digits=5)
+maxdmin = mstep$dmin[which.max(mstep$mstep)]
+
+dmin1 = sprintf('%02i:%02i', 
+   floor(maxdmin / 60), maxdmin %% 60)
+dmin2 = sprintf('%02i:%02i', 
+   floor((maxdmin+5) / 60), (maxdmin+5) %% 60)
+
+plot(mstep$dmin,mstep$mstep, type='l', axes=F, 
+   main='Average Steps in 5-Min Interval in Each Day',
+   xlab='Time of Day (HH:MM in the 24-hour format)',
+   ylab='Steps in 5-Min Interval')
+axis(1, at=0:24*60, labels=F, tck=-0.01)
+axis(1, at=0:8*180, labels=sprintf('%02i:00',0:8*3))
+axis(2)
+
+```
+
+#### The maximum steps among the average steps taken in 5-min interval is: 
+#### `r maxstep` steps during the period between `r dmin1` and `r dmin2`. 
 
 ## Imputing missing values
 
+#### The number of rows with missing values is `r length(which(is.na(df$steps)))`.
+#### Missing Value Mitigation Method  
+* The missing values in weekday records are filled with the average value of 
+the time period in other weekday records.  
+* The missing values in weekend records are filled with the average value of 
+the time period in other weekend records.  
 
+```{r}
+
+naidx = which(is.na(df$steps)) 
+df$ww = ifelse(
+   weekdays(as.Date(df$date)) %in% c('Saturday','Sunday'),
+   'Weekend','Weekday' ) 
+df$wwint = paste(df$ww, df$fint, sep='-')
+
+avgstep = tapply(df$steps, df$wwint, mean, na.rm=T)
+
+df.fill = df
+df.fill$steps[naidx] = avgstep[ df$wwint[naidx] ]
+
+tstep = tapply(df.fill$steps, df.fill$date, sum)
+
+stmean2 = format(mean(tstep), nsmall=2, digits=7, big.mark=',')
+stmed2  = format(median(tstep), big.mark=',')
+
+hist(tstep,
+   main='Histogram of Total Steps per Day', 
+   xlab='Total Steps per Day', 
+   ylab='Frequency') 
+
+```
+
+### BEFORE missing values are filled: 
+#### The mean of the total number of steps taken per day is `r stmean`.  
+#### The median of the total number of steps taken per day is `r stmed`.      
+
+### AFTER missing values are filled: 
+#### The mean of the total number of steps taken per day is `r stmean2`.  
+#### The median of the total number of steps taken per day is `r stmed2`.      
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+```{r fig.height=8}
+
+mstep = df.fill %>% group_by( dmin, ww ) %>%
+   summarize(mstep = mean(steps)) %>%
+   arrange(dmin, ww) %>% data.frame()
+
+mstep = reshape(mstep, direction='wide',
+   idvar='dmin', timevar='ww')
+names(mstep) = sub('mstep.','', names(mstep))
+
+par(mfrow=c(2,1))
+
+plot(mstep$dmin,mstep$Weekday, type='l', axes=F, 
+   main='Average Steps in 5-Min Interval in WEEKDAY',
+   xlab='Time of Day (HH:MM in the 24-hour format)',
+   ylab='Steps in 5-Min Interval', ylim=c(0,250))
+axis(1, at=0:24*60, labels=F, tck=-0.01)
+axis(1, at=0:8*180, labels=sprintf('%02i:00',0:8*3))
+axis(2)
+
+plot(mstep$dmin,mstep$Weekend, type='l', axes=F, 
+   main='Average Steps in 5-Min Interval in WEEKEND',
+   xlab='Time of Day (HH:MM in the 24-hour format)',
+   ylab='Steps in 5-Min Interval', ylim=c(0,250))
+axis(1, at=0:24*60, labels=F, tck=-0.01)
+axis(1, at=0:8*180, labels=sprintf('%02i:00',0:8*3))
+axis(2)
+
+```
+
+
